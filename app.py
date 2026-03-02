@@ -28,7 +28,10 @@ with st.sidebar.form("add_form", clear_on_submit=True):
         cat_options = ["💰 薪資", "🧧 獎金", "📈 投資收益", "House Rent"]
     
     category = st.selectbox("分類", cat_options)
-    payment_method = st.selectbox("支付方式", ["Cash", "Chase checking","BOA Travel","Citi DC","Chase Unlimited","Amex Blue","Chase CSP","Citi Costco","Chase Freedom","Chase CSR","Chase Hyatt","BOA Alaska","Amex Everyday","Amex Hilton","Citi Strata","Chase Amazon","Recognition"])
+    payment_method = st.selectbox("支付方式", ["Chase checking","Chase Freedom","Chase Unlimited","Chase CSP","Chase CSR","Chase Amazon","Chase Hyatt",
+        "Citi DC","Citi Strata","Citi Costco",
+        "BOA Alaska","BOA Travel","Amex Blue","Amex Everyday","Amex Hilton",
+        "💵 Cash", "Recognition"])
     
     col_sub, col_city = st.columns(2)
     with col_sub:
@@ -135,3 +138,4 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+

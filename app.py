@@ -1,24 +1,22 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
 
 # --- 1. 初始化介面 ---
 st.set_page_config(page_title="雲端記帳表", layout="wide")
-st.title("👨‍👩‍👧‍👦 家庭記帳看板 (Google Sheets 版)")
+st.title("👨‍👩‍👧‍👦 家庭記帳看板 (進階趨勢版)")
 
 # --- 2. 建立 Google Sheets 連線 ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 讀取現有資料
 try:
-    df = conn.read(ttl=0) # ttl=0 表示每次都讀取最新資料，不使用快取
+    df = conn.read(ttl=0)
 except:
-    # 如果表單全空，建立一個空的 DataFrame
     df = pd.DataFrame(columns=['date', 'type', 'amount', 'category', 'sub_cat', 'item', 'city', 'paid_by', 'share_by', 'payment_method', 'comment'])
 
-# --- 3. 側邊欄：新增帳目 ---
+# --- 3. 側邊欄：新增帳目 (維持原樣) ---
 st.sidebar.header("✍️ 新增帳目")
 with st.sidebar.form("add_form", clear_on_submit=True):
     date = st.date_input("日期", datetime.now())
@@ -51,116 +49,89 @@ with st.sidebar.form("add_form", clear_on_submit=True):
     submit = st.form_submit_button("💾 儲存到雲端")
 
     if submit and item:
-        # 建立新資料列
-        new_row = pd.DataFrame([{
-            "date": date.strftime("%Y-%m-%d"),
-            "type": record_type,
-            "amount": amount,
-            "category": category,
-            "sub_cat": sub_cat,
-            "item": item,
-            "city": city,
-            "paid_by": paid_by,
-            "share_by": share_by,
-            "payment_method": payment_method,
-            "comment": comment
-        }])
-        
-        # 合併並更新 Google Sheets
+        new_row = pd.DataFrame([{"date": date.strftime("%Y-%m-%d"), "type": record_type, "amount": amount, "category": category, "sub_cat": sub_cat, "item": item, "city": city, "paid_by": paid_by, "share_by": share_by, "payment_method": payment_method, "comment": comment}])
         updated_df = pd.concat([df, new_row], ignore_index=True)
         conn.update(data=updated_df)
         st.sidebar.success("✅ 雲端儲存成功！")
         st.rerun()
 
-# --- 4. 看板與圖表顯示 (與之前邏輯相同) ---
+# --- 4. 數據處理與 KPI ---
 if not df.empty:
     df['date_dt'] = pd.to_datetime(df['date'], errors='coerce')
+    
+    # 計算本月
     current_month = datetime.now().month
     current_year = datetime.now().year
     this_month_df = df[(df['date_dt'].dt.month == current_month) & (df['date_dt'].dt.year == current_year)]
     
-    m_income = this_month_df[this_month_df['type'] == '收入']['amount'].sum()
-    m_expense = this_month_df[this_month_df['type'] == '支出']['amount'].sum()
+    # (a) 計算上月盈餘
+    first_day_this_month = datetime.now().replace(day=1)
+    last_day_last_month = first_day_this_month - timedelta(days=1)
+    last_month_df = df[(df['date_dt'].dt.month == last_day_last_month.month) & (df['date_dt'].dt.year == last_day_last_month.year)]
     
+    lm_income = last_month_df[last_month_df['type'] == '收入']['amount'].sum()
+    lm_expense = last_month_df[last_month_df['type'] == '支出']['amount'].sum()
+    lm_balance = lm_income - lm_expense
+
     st.markdown(f"### 🗓️ {current_year} 年 {current_month} 月 概況")
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("本月總支出", f"${m_expense:,.2f}")
-    kpi2.metric("本月總收入", f"${m_income:,.2f}")
-    kpi3.metric("本月盈餘", f"${(m_income - m_expense):,.2f}")
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("本月總支出", f"${this_month_df[this_month_df['type'] == '支出']['amount'].sum():,.2f}")
+    kpi2.metric("本月總收入", f"${this_month_df[this_month_df['type'] == '收入']['amount'].sum():,.2f}")
+    kpi3.metric("本月盈餘", f"${(this_month_df[this_month_df['type'] == '收入']['amount'].sum() - this_month_df[this_month_df['type'] == '支出']['amount'].sum()):,.2f}")
+    kpi4.metric("💰 上月總盈餘", f"${lm_balance:,.2f}", delta_color="normal")
     
     st.divider()
 
-    tab1, tab2 = st.tabs(["📝 編輯帳目", "📊 統計圖表"])
+    tab1, tab2, tab3 = st.tabs(["📝 編輯帳目", "📊 分類統計", "📈 趨勢分析"])
 
     with tab1:
-        st.subheader("📋 雲端資料同步管理")
+        st.subheader("📋 雲端資料管理")
         edited_df = st.data_editor(df.drop(columns=['date_dt']), use_container_width=True, num_rows="dynamic", hide_index=True)
-        if st.button("🚀 同步修改到 Google Sheets"):
+        if st.button("🚀 同步修改"):
             conn.update(data=edited_df)
-            st.success("✅ 雲端已同步！")
             st.rerun()
 
     with tab2:
-        st.subheader("📊 動態樞紐分析與統計")
-        group_cols = st.multiselect(
-            "選擇統計維度 (可拖曳排序):",
-            options=['type', 'category', 'sub_cat', 'paid_by', 'payment_method', 'city'],
-            default=['category', 'sub_cat']
+        st.subheader("📊 現階段分類佔比")
+        group_cols = st.multiselect("統計維度:", options=['type', 'category', 'sub_cat', 'paid_by'], default=['category', 'sub_cat'])
+        if group_cols:
+            pivot_df = df.groupby(group_cols)['amount'].sum().reset_index()
+            fig = px.sunburst(pivot_df, path=group_cols, values='amount', color='amount', color_continuous_scale='RdBu')
+            fig.update_traces(textinfo="label+value", texttemplate='%{label}<br>$%{value:,.2f}')
+            st.plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+        st.subheader("📈 逐月收支趨勢 (Pivot)")
+        # 建立「月份」欄位供樞紐分析
+        df['Month'] = df['date_dt'].dt.strftime('%Y-%m')
+        
+        # 讓使用者選取想追蹤的維度
+        trend_dim = st.selectbox("選擇想分析的趨勢維度:", options=['category', 'type', 'paid_by', 'payment_method'])
+        
+        # 樞紐分析表：X軸為月份，分類為欄位
+        trend_df = df.groupby(['Month', trend_dim])['amount'].sum().reset_index()
+        
+        # 繪製折線圖
+        fig_trend = px.line(
+            trend_df, 
+            x='Month', 
+            y='amount', 
+            color=trend_dim, 
+            markers=True,
+            title=f"每月 {trend_dim} 金額走勢"
         )
         
-        if group_cols:
-            # 1. 計算統計數據
-            pivot_df = df.groupby(group_cols)['amount'].sum().reset_index()
-            
-            # 2. 顯示美化後的資料表格
-            st.write("📋 統計結果摘要:")
-            st.dataframe(
-                pivot_df.sort_values(by='amount', ascending=False).style.format({"amount": "${:,.2f}"}), 
-                use_container_width=True
-            )
-            
-            # --- 3. 太陽圖 (Sunburst) ---
-            st.write("🎯 層級分布 (點擊區塊可縮放):")
-            fig = px.sunburst(
-                pivot_df, 
-                path=group_cols, 
-                values='amount',
-                color='amount',
-                color_continuous_scale='RdBu'
-            )
-            
-            # 強制顯示標籤與金額，並格式化
-            fig.update_traces(
-                textinfo="label+value", 
-                texttemplate='%{label}<br>$%{value:,.2f}',
-                hovertemplate='<b>%{label}</b><br>總額: $%{value:,.2f}'
-            )
-            fig.update_layout(height=600, margin=dict(t=50, l=0, r=0, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # --- 4. 長條圖 (Bar Chart) ---
-            st.write("📈 各類別金額對比:")
-            fig_bar = px.bar(
-                pivot_df, 
-                x=group_cols[0], 
-                y='amount', 
-                color=group_cols[1] if len(group_cols) > 1 else None
-            )
-            
-            # 在柱子上方直接標註金額數字
-            fig_bar.update_traces(
-                texttemplate='$%{y:,.2f}', 
-                textposition='outside'
-            )
-            fig_bar.update_layout(
-                yaxis_title="金額 ($)", 
-                xaxis_title=group_cols[0],
-                uniformtext_minsize=8, 
-                uniformtext_mode='hide'
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.warning("⚠️ 請選擇維度。")
+        # 在折線點上直接顯示金額
+        fig_trend.update_traces(
+            texttemplate='$%{y:,.2f}', 
+            textposition='top center'
+        )
+        fig_trend.update_layout(yaxis_title="金額 ($)", xaxis_title="月份")
+        st.plotly_chart(fig_trend, use_container_width=True)
+        
+        # 顯示原始趨勢數據表格
+        st.write("📋 趨勢數據明細:")
+        st.dataframe(trend_df.pivot(index='Month', columns=trend_dim, values='amount').fillna(0).style.format("${:,.2f}"))
+
 else:
     st.info("請輸入資料開始雲端同步。")
-

@@ -1,0 +1,14 @@
+# 隱私金鑰 (絕對不能上傳！)
+.streamlit/secrets.toml
+
+# Python 產生的暫存檔
+__pycache__/
+*.pyc
+
+# 本地測試用的資料庫或檔案
+*.db
+test_data.csv
+
+# 虛擬環境
+venv/
+.env

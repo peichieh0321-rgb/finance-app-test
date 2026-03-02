@@ -6,7 +6,7 @@ from streamlit_gsheets import GSheetsConnection
 
 # --- 1. 初始化介面 ---
 st.set_page_config(page_title="雲端記帳表", layout="wide")
-st.title("👨‍👩‍👧‍👦 家庭記帳看板 (進階趨勢版)")
+st.title("👨‍👩‍👧‍👦 家庭記帳App (Jack/Betty)")
 
 # --- 2. 建立 Google Sheets 連線 ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -138,4 +138,5 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 

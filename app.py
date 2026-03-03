@@ -95,13 +95,66 @@ if not df.empty:
             st.rerun()
 
     with tab2:
-        st.subheader("📊 現階段分類佔比")
-        group_cols = st.multiselect("統計維度:", options=['type', 'category', 'sub_cat', 'paid_by'], default=['category', 'sub_cat'])
+        st.subheader("📊 動態樞紐分析與統計")
+        group_cols = st.multiselect(
+            "選擇統計維度 (可拖曳排序):",
+            options=['type', 'category', 'sub_cat', 'paid_by', 'payment_method', 'city'],
+            default=['category', 'sub_cat']
+        )
+        
         if group_cols:
+            # 1. 計算統計數據
             pivot_df = df.groupby(group_cols)['amount'].sum().reset_index()
-            fig = px.sunburst(pivot_df, path=group_cols, values='amount', color='amount', color_continuous_scale='RdBu')
-            fig.update_traces(textinfo="label+value", texttemplate='%{label}<br>$%{value:,.2f}')
+            
+            # 2. 顯示美化後的資料表格
+            st.write("📋 統計結果摘要:")
+            st.dataframe(
+                pivot_df.sort_values(by='amount', ascending=False).style.format({"amount": "${:,.2f}"}), 
+                use_container_width=True
+            )
+            
+            # --- 3. 太陽圖 (Sunburst) ---
+            st.write("🎯 層級分布 (點擊區塊可縮放):")
+            fig = px.sunburst(
+                pivot_df, 
+                path=group_cols, 
+                values='amount',
+                color='amount',
+                color_continuous_scale='RdBu'
+            )
+            
+            # 強制顯示標籤與金額，並格式化
+            fig.update_traces(
+                textinfo="label+value", 
+                texttemplate='%{label}<br>$%{value:,.2f}',
+                hovertemplate='<b>%{label}</b><br>總額: $%{value:,.2f}'
+            )
+            fig.update_layout(height=600, margin=dict(t=50, l=0, r=0, b=0))
             st.plotly_chart(fig, use_container_width=True)
+            
+            # --- 4. 長條圖 (Bar Chart) ---
+            st.write("📈 各類別金額對比:")
+            fig_bar = px.bar(
+                pivot_df, 
+                x=group_cols[0], 
+                y='amount', 
+                color=group_cols[1] if len(group_cols) > 1 else None
+            )
+            
+            # 在柱子上方直接標註金額數字
+            fig_bar.update_traces(
+                texttemplate='$%{y:,.2f}', 
+                textposition='outside'
+            )
+            fig_bar.update_layout(
+                yaxis_title="金額 ($)", 
+                xaxis_title=group_cols[0],
+                uniformtext_minsize=8, 
+                uniformtext_mode='hide'
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.warning("⚠️ 請選擇維度。")
 
     with tab3:
         st.subheader("📈 逐月收支趨勢 (Pivot)")
@@ -138,5 +191,6 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 

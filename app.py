@@ -200,39 +200,76 @@ if not df.empty:
             st.warning("⚠️ 請選擇維度。")
     with tab3:
         st.subheader("📈 逐月收支趨勢 (Pivot)")
-        # 建立「月份」欄位供樞紐分析
-        df['Month'] = df['date_dt'].dt.strftime('%Y-%m')
         
-        # 讓使用者選取想追蹤的維度
-        trend_dim = st.selectbox("選擇想分析的趨勢維度:", options=['category', 'type', 'paid_by', 'payment_method'])
+        # 1. 準備資料與月份欄位
+        df_trend_base = df.copy()
+        df_trend_base['date_dt'] = pd.to_datetime(df_trend_base['date'], errors='coerce')
+        df_trend_base['Month'] = df_trend_base['date_dt'].dt.strftime('%Y-%m')
         
-        # 樞紐分析表：X軸為月份，分類為欄位
-        trend_df = df.groupby(['Month', trend_dim])['amount'].sum().reset_index()
-        
-        # 繪製折線圖
-        fig_trend = px.line(
-            trend_df, 
-            x='Month', 
-            y='amount', 
-            color=trend_dim, 
-            markers=True,
-            title=f"每月 {trend_dim} 金額走勢"
+        # 移除無效日期 (避免報錯)
+        df_trend_base = df_trend_base.dropna(subset=['Month']).sort_values('Month')
+
+        # 2. 讓使用者選取想追蹤的維度
+        trend_dim = st.selectbox(
+            "選擇想分析的趨勢維度:", 
+            options=['category', 'type', 'paid_by', 'payment_method'],
+            key="trend_dim_select"
         )
         
-        # 在折線點上直接顯示金額
-        fig_trend.update_traces(
-            texttemplate='$%{y:,.2f}', 
-            textposition='top center'
-        )
-        fig_trend.update_layout(yaxis_title="金額 ($)", xaxis_title="月份")
-        st.plotly_chart(fig_trend, use_container_width=True)
+        # --- 核心改進：動態子項目篩選 ---
+        # 抓取該維度下所有不重複的項目
+        all_items = sorted(df_trend_base[trend_dim].unique().tolist())
         
-        # 顯示原始趨勢數據表格
-        st.write("📋 趨勢數據明細:")
-        st.dataframe(trend_df.pivot(index='Month', columns=trend_dim, values='amount').fillna(0).style.format("${:,.2f}"))
+        selected_items = st.multiselect(
+            f"篩選具體的 {trend_dim} 項目:",
+            options=all_items,
+            default=all_items # 預設全選
+        )
+
+        if selected_items:
+            # 根據選取項目過濾資料
+            filtered_trend_df = df_trend_base[df_trend_base[trend_dim].isin(selected_items)]
+            
+            # 樞紐分析表：加總金額
+            trend_df = filtered_trend_df.groupby(['Month', trend_dim])['amount'].sum().reset_index()
+            
+            # 3. 繪製折線圖
+            fig_trend = px.line(
+                trend_df, 
+                x='Month', 
+                y='amount', 
+                color=trend_dim, 
+                markers=True,
+                title=f"每月 {trend_dim} 金額走勢",
+                category_orders={"Month": sorted(trend_df['Month'].unique())} # 確保月份順序正確
+            )
+            
+            # 在折線點上直接顯示金額 (為了避免圖表太亂，設定 textposition)
+            fig_trend.update_traces(
+                texttemplate='$%{y:,.0f}', # 顯示整數金額較不擁擠
+                textposition='top center'
+            )
+            
+            fig_trend.update_layout(
+                yaxis_title="金額 ($)", 
+                xaxis_title="月份",
+                hovermode="x unified", # 滑鼠移上去會同時顯示該月所有項目的金額
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1) # 把圖例放在上方
+            )
+            
+            st.plotly_chart(fig_trend, use_container_width=True)
+            
+            # 4. 顯示原始趨勢數據表格 (使用 Pivot 格式)
+            st.write("📋 趨勢數據明細:")
+            pivot_display = trend_df.pivot(index='Month', columns=trend_dim, values='amount').fillna(0)
+            st.dataframe(pivot_display.style.format("${:,.2f}"), use_container_width=True)
+            
+        else:
+            st.warning(f"⚠️ 請至少選擇一個 {trend_dim} 項目進行顯示。")
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

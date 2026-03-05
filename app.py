@@ -179,77 +179,88 @@ if not df.empty:
     with tab3:
         st.subheader("📈 逐月收支趨勢 (Pivot)")
         
-        # 1. 準備資料與月份欄位
-        df_trend_base = df.copy()
-        df_trend_base['date_dt'] = pd.to_datetime(df_trend_base['date'], errors='coerce')
-        df_trend_base['Month'] = df_trend_base['date_dt'].dt.strftime('%Y-%m')
-        
-        # 移除無效日期 (避免報錯)
-        df_trend_base = df_trend_base.dropna(subset=['Month']).sort_values('Month')
+        if not df.empty:
+            # 1. 準備資料與清洗
+            df_trend_base = df.copy()
+            df_trend_base['amount'] = pd.to_numeric(df_trend_base['amount'], errors='coerce').fillna(0)
+            df_trend_base['date_dt'] = pd.to_datetime(df_trend_base['date'], errors='coerce')
+            df_trend_base['Month'] = df_trend_base['date_dt'].dt.strftime('%Y-%m')
+            
+            # 移除無效日期並排序
+            df_trend_base = df_trend_base.dropna(subset=['Month']).sort_values('Month')
 
-        # 2. 讓使用者選取想追蹤的維度
-        trend_dim = st.selectbox(
-            "選擇想分析的趨勢維度:", 
-            options=['category', 'type', 'paid_by', 'payment_method'],
-            key="trend_dim_select"
-        )
-        
-        # --- 核心改進：動態子項目篩選 ---
-        # 抓取該維度下所有不重複的項目
-        # --- 核心修復：處理混合類型與空值，避免 sorted 報錯 ---
-        # 將該維度所有內容先轉成字串，並處理 NaN
-        temp_series = df_trend_base[trend_dim].fillna("Unspecified").astype(str)
-        all_items = sorted(temp_series.unique().tolist())
-        
-        selected_items = st.multiselect(
-            f"篩選具體的 {trend_dim} 項目:",
-            options=all_items,
-            default=all_items # 預設全選
-        )
+            # --- 核心改進：新增收支切換 ---
+            trend_type = st.radio("💰 選擇趨勢類型:", ["支出", "收入"], horizontal=True, key="trend_type_radio")
+            
+            # 先根據收支類型過濾大框架
+            df_type_filtered = df_trend_base[df_trend_base['type'] == trend_type]
 
-        if selected_items:
-            # 根據選取項目過濾資料
-            filtered_trend_df = df_trend_base[df_trend_base[trend_dim].isin(selected_items)]
-            
-            # 樞紐分析表：加總金額
-            trend_df = filtered_trend_df.groupby(['Month', trend_dim])['amount'].sum().reset_index()
-            
-            # 3. 繪製折線圖
-            fig_trend = px.line(
-                trend_df, 
-                x='Month', 
-                y='amount', 
-                color=trend_dim, 
-                markers=True,
-                title=f"每月 {trend_dim} 金額走勢",
-                category_orders={"Month": sorted(trend_df['Month'].unique())} # 確保月份順序正確
+            # 2. 選擇維度 (排除 'type'，因為已經在上方選擇了)
+            trend_dim = st.selectbox(
+                "選擇想分析的趨勢維度:", 
+                options=['category', 'sub_cat', 'paid_by', 'payment_method', 'city'],
+                key="trend_dim_select"
             )
             
-            # 在折線點上直接顯示金額 (為了避免圖表太亂，設定 textposition)
-            fig_trend.update_traces(
-                texttemplate='$%{y:,.0f}', # 顯示整數金額較不擁擠
-                textposition='top center'
+            # 處理混合類型與空值
+            df_type_filtered[trend_dim] = df_type_filtered[trend_dim].fillna("Unspecified").astype(str)
+            all_items = sorted(df_type_filtered[trend_dim].unique().tolist())
+            
+            selected_items = st.multiselect(
+                f"篩選具體的 {trend_dim} 項目:",
+                options=all_items,
+                default=all_items[:10] if len(all_items) > 10 else all_items # 若項目太多，預設選前10個避免圖表太亂
             )
-            
-            fig_trend.update_layout(
-                yaxis_title="金額 ($)", 
-                xaxis_title="月份",
-                hovermode="x unified", # 滑鼠移上去會同時顯示該月所有項目的金額
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1) # 把圖例放在上方
-            )
-            
-            st.plotly_chart(fig_trend, use_container_width=True)
-            
-            # 4. 顯示原始趨勢數據表格 (使用 Pivot 格式)
-            st.write("📋 趨勢數據明細:")
-            pivot_display = trend_df.pivot(index='Month', columns=trend_dim, values='amount').fillna(0)
-            st.dataframe(pivot_display.style.format("${:,.2f}"), use_container_width=True)
-            
+
+            if selected_items:
+                # 根據選取項目過濾
+                filtered_trend_df = df_type_filtered[df_type_filtered[trend_dim].isin(selected_items)]
+                
+                # 樞紐分析：加總金額
+                trend_df = filtered_trend_df.groupby(['Month', trend_dim])['amount'].sum().reset_index()
+                
+                # 3. 繪製折線圖
+                # 設定配色：支出用溫暖色系，收入用冷色系
+                color_scheme = px.colors.qualitative.Prism if trend_type == "支出" else px.colors.qualitative.Safe
+                
+                fig_trend = px.line(
+                    trend_df, 
+                    x='Month', 
+                    y='amount', 
+                    color=trend_dim, 
+                    markers=True,
+                    title=f"每月 {trend_type} - {trend_dim} 金額走勢",
+                    color_discrete_sequence=color_scheme,
+                    category_orders={"Month": sorted(trend_df['Month'].unique())}
+                )
+                
+                fig_trend.update_traces(
+                    texttemplate='$%{y:,.0f}', 
+                    textposition='top center'
+                )
+                
+                fig_trend.update_layout(
+                    yaxis_title=f"{trend_type}金額 ($)", 
+                    xaxis_title="月份",
+                    hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                
+                st.plotly_chart(fig_trend, use_container_width=True)
+                
+                # 4. 顯示數據明細
+                st.write(f"📋 {trend_type}趨勢數據明細 (Pivot):")
+                if not trend_df.empty:
+                    pivot_display = trend_df.pivot(index='Month', columns=trend_dim, values='amount').fillna(0)
+                    st.dataframe(pivot_display.style.format("${:,.2f}"), use_container_width=True)
+            else:
+                st.warning(f"⚠️ 請至少選擇一個項目以顯示{trend_type}趨勢。")
         else:
-            st.warning(f"⚠️ 請至少選擇一個 {trend_dim} 項目進行顯示。")
+            st.info("尚無資料可供分析。")
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

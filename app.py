@@ -96,18 +96,52 @@ if not df.empty:
 
     with tab2:
         st.subheader("📊 動態樞紐分析與統計")
+
+        # --- 1. 月份篩選邏輯 ---
+        if not df.empty:
+            # 確保日期欄位是 datetime 格式
+            temp_df = df.copy()
+            temp_df['date'] = pd.to_datetime(temp_df['date'])
+            # 建立「年-月」字串欄位用於篩選
+            temp_df['month_year'] = temp_df['date'].dt.strftime('%Y-%m')
+            
+            # 取得所有唯一的月份並排序（新到舊）
+            available_months = sorted(temp_df['month_year'].unique(), reverse=True)
+            
+            # 計算「上個月」的字串 (以今天日期為準往前推一個月)
+            from datetime import date, timedelta
+            first_day_this_month = date.today().replace(day=1)
+            last_day_last_month = first_day_this_month - timedelta(days=1)
+            last_month_str = last_day_last_month.strftime('%Y-%m')
+
+            # 如果資料裡有上個月就當 default，沒有就選最新的月份
+            default_val = [last_month_str] if last_month_str in available_months else [available_months[0]]
+
+            # 月份多選器
+            selected_months = st.multiselect(
+                "📅 選擇要統計的月份:",
+                options=available_months,
+                default=default_val
+            )
+
+            # 根據選取月份過濾資料
+            filtered_df = temp_df[temp_df['month_year'].isin(selected_months)]
+        else:
+            filtered_df = pd.DataFrame()
+
+        # --- 2. 原有的統計維度選擇 ---
         group_cols = st.multiselect(
             "選擇統計維度 (可拖曳排序):",
             options=['type', 'category', 'sub_cat', 'paid_by', 'payment_method', 'city'],
             default=['category', 'sub_cat']
         )
         
-        if group_cols:
+        if not filtered_df.empty and group_cols:
             # 1. 計算統計數據
-            pivot_df = df.groupby(group_cols)['amount'].sum().reset_index()
+            pivot_df = filtered_df.groupby(group_cols)['amount'].sum().reset_index()
             
-            # 2. 顯示美化後的資料表格
-            st.write("📋 統計結果摘要:")
+            # 2. 顯示表格
+            st.write(f"📋 統計結果摘要 ({', '.join(selected_months)}):")
             st.dataframe(
                 pivot_df.sort_values(by='amount', ascending=False).style.format({"amount": "${:,.2f}"}), 
                 use_container_width=True
@@ -123,7 +157,6 @@ if not df.empty:
                 color_continuous_scale='RdBu'
             )
             
-            # 強制顯示標籤與金額，並格式化
             fig.update_traces(
                 textinfo="label+value", 
                 texttemplate='%{label}<br>$%{value:,.2f}',
@@ -141,7 +174,6 @@ if not df.empty:
                 color=group_cols[1] if len(group_cols) > 1 else None
             )
             
-            # 在柱子上方直接標註金額數字
             fig_bar.update_traces(
                 texttemplate='$%{y:,.2f}', 
                 textposition='outside'
@@ -153,9 +185,11 @@ if not df.empty:
                 uniformtext_mode='hide'
             )
             st.plotly_chart(fig_bar, use_container_width=True)
+            
+        elif filtered_df.empty and not df.empty:
+            st.info("ℹ️ 請選擇至少一個月份來顯示統計數據。")
         else:
             st.warning("⚠️ 請選擇維度。")
-
     with tab3:
         st.subheader("📈 逐月收支趨勢 (Pivot)")
         # 建立「月份」欄位供樞紐分析
@@ -191,6 +225,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

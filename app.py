@@ -13,6 +13,10 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 try:
     df = conn.read(ttl=0)
+    if not df.empty:
+        # 強制轉換日期格式確保排序正確，並按日期遞減排序（新到舊）
+        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        df = df.sort_values(by='date', ascending=False).reset_index(drop=True)
 except:
     df = pd.DataFrame(columns=['date', 'type', 'amount', 'category', 'sub_cat', 'item', 'city', 'paid_by', 'share_by', 'payment_method', 'comment'])
 
@@ -148,10 +152,50 @@ if not df.empty:
 
     with tab1:
         st.subheader("📋 雲端資料管理")
-        edited_df = st.data_editor(df.drop(columns=['date_dt']), use_container_width=True, num_rows="dynamic", hide_index=True)
-        if st.button("🚀 同步修改"):
-            conn.update(data=edited_df)
-            st.rerun()
+        
+        # --- 新增排序功能區 ---
+        col_sort1, col_sort2 = st.columns([2, 1])
+        with col_sort1:
+            sort_target = st.multiselect(
+                "選擇排序欄位 (可多選，依序優先):",
+                options=['date', 'amount', 'category', 'type', 'paid_by'],
+                default=['date']
+            )
+        with col_sort2:
+            sort_order = st.radio("排序方式:", ["遞減 (新→舊/大→小)", "遞增 (舊→新/小→大)"], horizontal=True)
+        
+        # 執行排序邏輯
+        is_ascending = (sort_order == "遞增 (舊→新/小→大)")
+        if sort_target:
+            df = df.sort_values(by=sort_target, ascending=is_ascending)
+
+        st.divider()
+
+        # --- 資料編輯器 ---
+        # 移除顯示用的臨時欄位 date_dt
+        display_df = df.drop(columns=['date_dt'], errors='ignore')
+        
+        edited_df = st.data_editor(
+            display_df, 
+            use_container_width=True, 
+            num_rows="dynamic", 
+            hide_index=True,
+            column_config={
+                "date": st.column_config.DateColumn("日期"),
+                "amount": st.column_config.NumberColumn("金額", format="$%f"),
+                "type": st.column_config.SelectboxColumn("類型", options=["支出", "收入"]),
+            }
+        )
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🚀 同步修改與排序至雲端"):
+                # 注意：同步時會依照你目前的排序儲存回 Google Sheets
+                conn.update(data=edited_df)
+                st.success("🎉 資料已依指定順序更新至雲端！")
+                st.rerun()
+        with col_btn2:
+            st.caption("💡 提示：點擊上方同步按鈕後，雲端試算表的排列順序也會隨之改變。")
 
     with tab2:
         st.subheader("📊 動態樞紐分析與統計")
@@ -319,6 +363,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

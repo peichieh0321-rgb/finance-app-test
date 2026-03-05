@@ -23,9 +23,9 @@ with st.sidebar.form("add_form", clear_on_submit=True):
     record_type = st.radio("收支類型", ["支出", "收入"], horizontal=True)
     
     if record_type == "支出":
-        cat_options = ["🍱 飲食", "🚌 交通", "🛍️ 購物", "🏠 住屋", "🎮 娛樂", "💡 其他", "🍱 Dine-Out", "🍱 Dessert/Drinks", "🛍️ Beauty&Salon","🛍️ Clothing&SHoes","Grocery-Food","Theo", "Loan & Insurance & HOA/DayCare", "Suncreek House Expense", "Yearly/Monthly Subscription", "House Expense", "Car Other Expense", "Ota/Maple Related Expense", "Entertainment (local)"]
+        cat_options = ["🍱 飲食", "🚌 交通", "🛍️ 購物", "🏠 住屋", "🎮 娛樂", "🪙 固定收支", "💡 其他", "✈️ Travel", "🍱 Dine-Out", "🍱 Dessert/Drinks", "🛍️ Beauty&Salon","🛍️ Clothing&Shoes","Grocery-Food", "🍼 Baby" , "Yearly/Monthly Subscription", "House Expense", "Car Other", "Ota/Maple Related", "Entertainment (local)"]
     else:
-        cat_options = ["💰 薪資", "🧧 獎金", "📈 投資收益", "House Rent"]
+        cat_options = ["💰 薪資", "🪙 固定收支", "🧧 獎金", "📈 投資收益", "House Rent"]
     
     category = st.selectbox("分類", cat_options)
     payment_method = st.selectbox("支付方式", ["Chase checking","Chase Freedom","Chase Unlimited","Chase CSP","Chase CSR","Chase Amazon","Chase Hyatt",
@@ -82,6 +82,65 @@ if not df.empty:
     kpi2.metric("本月總收入", f"${this_month_df[this_month_df['type'] == '收入']['amount'].sum():,.2f}")
     kpi3.metric("本月盈餘", f"${(this_month_df[this_month_df['type'] == '收入']['amount'].sum() - this_month_df[this_month_df['type'] == '支出']['amount'].sum()):,.2f}")
     kpi4.metric("💰 上月總盈餘", f"${lm_balance:,.2f}", delta_color="normal")
+    
+    st.divider()
+
+    # --- 🤖 自動化工具：一鍵預填 ---
+    st.subheader("🤖 自動化工具")
+    
+    # 建立兩欄，讓畫面更整齊
+    tool_col1, tool_col2 = st.columns([1, 2])
+    
+    with tool_col1:
+        if st.button("✨ 預填本月固定收支"):
+            # 1. 定義時間範圍
+            this_month_str = datetime.now().strftime("%Y-%m")
+            last_month_date = datetime.now().replace(day=1) - timedelta(days=1)
+            last_month_str = last_month_date.strftime("%Y-%m")
+            
+            # 2. 篩選上個月分類為「🪙 固定收支」的資料
+            fixed_template = df[
+                (df['date_dt'].dt.strftime('%Y-%m') == last_month_str) & 
+                (df['category'] == "🪙 固定收支")
+            ].copy()
+            
+            if fixed_template.empty:
+                st.warning(f"🔍 在 {last_month_str} 中沒找到分類為「🪙 固定收支」的項目。")
+            else:
+                # 3. 防呆：檢查本月是否已存在（比對 項目名稱+金額）
+                # 這裡使用 this_month_df (前面 KPI 區塊已定義)
+                existing_check = this_month_df.apply(lambda x: f"{x['item']}_{x['amount']}", axis=1).tolist()
+                
+                new_entries = []
+                skipped_items = []
+                
+                for _, row in fixed_template.iterrows():
+                    item_id = f"{row['item']}_{row['amount']}"
+                    
+                    if item_id not in existing_check:
+                        # 複製資料並更新日期為今日
+                        new_row = row.drop(['date_dt']).to_dict()
+                        new_row['date'] = datetime.now().strftime("%Y-%m-%d")
+                        new_entries.append(new_row)
+                    else:
+                        skipped_items.append(row['item'])
+                
+                # 4. 寫入雲端
+                if new_entries:
+                    new_data_df = pd.DataFrame(new_entries)
+                    # 移除可能的 date_dt 欄位再合併，確保 Google Sheets 格式純淨
+                    final_update_df = pd.concat([df.drop(columns=['date_dt'], errors='ignore'), new_data_df], ignore_index=True)
+                    conn.update(data=final_update_df)
+                    
+                    st.success(f"✅ 已成功新增 {len(new_entries)} 筆固定收支！")
+                    if skipped_items:
+                        st.info(f"⏭️ 已跳過重複項目: {', '.join(skipped_items)}")
+                    st.rerun()
+                else:
+                    st.info("查無新項目：本月的所有固定收支似乎都已經記過了。")
+
+    with tool_col2:
+        st.caption("💡 說明：系統會抓取上個月分類為「🪙 固定收支」的內容，並自動過濾本月已存在的重複項。")
     
     st.divider()
 
@@ -260,6 +319,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

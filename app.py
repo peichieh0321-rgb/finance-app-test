@@ -218,7 +218,10 @@ if not df.empty:
         
         # --- 核心改進：動態子項目篩選 ---
         # 抓取該維度下所有不重複的項目
-        all_items = sorted(df_trend_base[trend_dim].unique().tolist())
+        # --- 核心修復：處理混合類型與空值，避免 sorted 報錯 ---
+        # 將該維度所有內容先轉成字串，並處理 NaN
+        temp_series = df_trend_base[trend_dim].fillna("Unspecified").astype(str)
+        all_items = sorted(temp_series.unique().tolist())
         
         selected_items = st.multiselect(
             f"篩選具體的 {trend_dim} 項目:",
@@ -269,6 +272,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

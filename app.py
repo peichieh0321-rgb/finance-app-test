@@ -97,6 +97,14 @@ if not df.empty:
     with tab2:
         st.subheader("📊 動態樞紐分析與統計")
 
+        # --- 關鍵修復：強制轉換 amount 為數字，避免排序報錯 ---
+        if not df.empty:
+            df['amount'] = pd.to_numeric(df[ 'amount'], errors='coerce').fillna(0)
+            # 同時確保日期格式正確，方便後續月份篩選
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        # --------------------------------------------------
+
+        # ... 接續後面的月份篩選與統計代碼 ...
         # --- 1. 月份篩選邏輯 ---
         if not df.empty:
             # 確保日期欄位是 datetime 格式
@@ -225,6 +233,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 

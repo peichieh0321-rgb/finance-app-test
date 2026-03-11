@@ -27,7 +27,7 @@ with st.sidebar.form("add_form", clear_on_submit=True):
     record_type = st.radio("收支類型", ["支出", "收入"], horizontal=True)
     
     if record_type == "支出":
-        cat_options = ["🍱 飲食", "🚌 交通", "🛍️ 購物", "🏠 住屋", "🎮 娛樂", "🪙 固定收支", "💡 其他", "✈️ Travel", "🍱 Dine-Out", "🍱 Dessert/Drinks", "🛍️ Beauty&Salon","🛍️ Clothing&Shoes","Grocery-Food", "🍼 Baby" , "Yearly/Monthly Subscription", "House Expense", "Car Other", "Ota/Maple Related", "Entertainment (local)"]
+        cat_options = ["🍱 飲食", "🚌 交通", "🛍️ 購物", "🏠 住屋", "🎮 娛樂", "🪙 固定收支", "💡 其他", "✈️ Travel", "🍱 Dine-Out", "🍱 Dessert/Drinks", "🛍️ Beauty&Salon","🛍️ Clothing&Shoes","Grocery-Food", "🍼 Baby" , "Yearly/Monthly Subscription", "House Expense", "Home Improvement", "Car Other", "Ota/Maple Related", "Entertainment (local)"]
     else:
         cat_options = ["💰 薪資", "🪙 固定收支", "🧧 獎金", "📈 投資收益", "House Rent"]
     
@@ -323,6 +323,7 @@ if not df.empty:
 
 else:
     st.info("請輸入資料開始雲端同步。")
+
 
 
 
